@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Rhymond/go-money"
-	"github.com/gorilla/mux"
 )
 
 type Recommendation struct {
@@ -101,48 +100,56 @@ type GetRecommendationResponse struct {
 }
 
 func (handler Handler) GetRecommendation(responseWriter http.ResponseWriter, request *http.Request) {
-	query := mux.Vars(request)
+	query := request.URL.Query()
 	location, ok := query["location"]
 	if !ok {
 		responseWriter.WriteHeader(http.StatusBadRequest)
+		responseWriter.Write([]byte("location is required"))
 		return
 	}
 	from, ok := query["from"]
 	if !ok {
 		responseWriter.WriteHeader(http.StatusBadRequest)
+		responseWriter.Write([]byte("from is required"))
 		return
 	}
 	to, ok := query["to"]
 	if !ok {
 		responseWriter.WriteHeader(http.StatusBadRequest)
+		responseWriter.Write([]byte("to is required"))
 		return
 	}
 	budget, ok := query["budget"]
 	if !ok {
 		responseWriter.WriteHeader(http.StatusBadRequest)
+		responseWriter.Write([]byte("budget is required"))
 		return
 	}
 	const expectedDateFormat = "2006-01-02"
-	tripStart, err := time.Parse(expectedDateFormat, from)
+	tripStart, err := time.Parse(expectedDateFormat, from[0])
 	if err != nil {
 		responseWriter.WriteHeader(http.StatusBadRequest)
+		responseWriter.Write([]byte("invalid from date"))
 		return
 	}
-	tripEnd, err := time.Parse(expectedDateFormat, to)
+	tripEnd, err := time.Parse(expectedDateFormat, to[0])
 	if err != nil {
 		responseWriter.WriteHeader(http.StatusBadRequest)
+		responseWriter.Write([]byte("invalid to date"))
 		return
 	}
-	budgetValue, err := strconv.Atoi(budget)
+	budgetValue, err := strconv.Atoi(budget[0])
 	if err != nil {
 		responseWriter.WriteHeader(http.StatusBadRequest)
+		responseWriter.Write([]byte("invalid budget"))
 		return
 	}
 	budgetMoney := money.New(int64(budgetValue), "USD")
 
-	recommendation, err := handler.svc.Get(request.Context(), tripStart, tripEnd, location, *budgetMoney)
+	recommendation, err := handler.svc.Get(request.Context(), tripStart, tripEnd, location[0], *budgetMoney)
 	if err != nil {
 		responseWriter.WriteHeader(http.StatusInternalServerError)
+		responseWriter.Write([]byte(err.Error()))
 		return
 	}
 	response, err := json.Marshal(GetRecommendationResponse{
@@ -157,6 +164,7 @@ func (handler Handler) GetRecommendation(responseWriter http.ResponseWriter, req
 	})
 	if err != nil {
 		responseWriter.WriteHeader(http.StatusInternalServerError)
+		responseWriter.Write([]byte(err.Error()))
 		return
 	}
 	responseWriter.WriteHeader(http.StatusOK)
