@@ -5,7 +5,6 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -18,7 +17,6 @@ type Res struct {
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
 	min := 1
 	max := 10
 

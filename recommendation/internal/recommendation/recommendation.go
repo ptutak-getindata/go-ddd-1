@@ -2,12 +2,16 @@ package recommendation
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Rhymond/go-money"
+	"github.com/gorilla/mux"
 )
 
 type Recommendation struct {
@@ -75,4 +79,86 @@ func (svc *Service) Get(ctx context.Context, tripStart time.Time, tripEnd time.T
 		HotelName: lowestOption.HotelName,
 		TripPrice: *lowestPrice,
 	}, nil
+}
+
+type Handler struct {
+	svc Service
+}
+
+func NewHandler(svc Service) (*Handler, error) {
+	if svc == (Service{}) {
+		return nil, errors.New("svc cannot be empty")
+	}
+	return &Handler{svc: svc}, nil
+}
+
+type GetRecommendationResponse struct {
+	HotelName string `json:"hotelName"`
+	TotalCost struct {
+		Cost     int64  `json:"cost"`
+		Currency string `json:"currency"`
+	} `json:"totalCost"`
+}
+
+func (handler Handler) GetRecommendation(responseWriter http.ResponseWriter, request *http.Request) {
+	query := mux.Vars(request)
+	location, ok := query["location"]
+	if !ok {
+		responseWriter.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	from, ok := query["from"]
+	if !ok {
+		responseWriter.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	to, ok := query["to"]
+	if !ok {
+		responseWriter.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	budget, ok := query["budget"]
+	if !ok {
+		responseWriter.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	const expectedDateFormat = "2006-01-02"
+	tripStart, err := time.Parse(expectedDateFormat, from)
+	if err != nil {
+		responseWriter.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	tripEnd, err := time.Parse(expectedDateFormat, to)
+	if err != nil {
+		responseWriter.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	budgetValue, err := strconv.Atoi(budget)
+	if err != nil {
+		responseWriter.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	budgetMoney := money.New(int64(budgetValue), "USD")
+
+	recommendation, err := handler.svc.Get(request.Context(), tripStart, tripEnd, location, *budgetMoney)
+	if err != nil {
+		responseWriter.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	response, err := json.Marshal(GetRecommendationResponse{
+		HotelName: recommendation.HotelName,
+		TotalCost: struct {
+			Cost     int64  `json:"cost"`
+			Currency string `json:"currency"`
+		}{
+			Cost:     recommendation.TripPrice.Amount(),
+			Currency: "USD",
+		},
+	})
+	if err != nil {
+		responseWriter.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	responseWriter.WriteHeader(http.StatusOK)
+	_, _ = responseWriter.Write(response)
 }
